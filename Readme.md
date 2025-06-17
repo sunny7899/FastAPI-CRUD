@@ -103,3 +103,19 @@ AUTH0_DOMAIN -> APIs base url
 http://127.0.0.1:8000/callback  -> callback url
 
  it's likely used to allow access from a Machine-to-Machine (M2M) application instead of a human user.
+
+ {
+    "owner_id": "google-oauth2|100412700466377214282",
+    "data": "Test data",
+    "id": 2
+}
+
+allowed callback uris
+http://127.0.0.1:8000/callback
+
+http://127.0.0.1:8000/docs/oauth2-redirect
+
+
+
+you should show the user who owns a model being able to access it and one who doesn't own it not having access
+endpoint that allows users who own the model instance to read the object and an auth0 m2m app to read the object.

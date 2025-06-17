@@ -13,7 +13,7 @@ from jose.backends.rsa_backend import RSAKey
 load_dotenv()
 
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
-AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID")
+AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID") #m2m client id
 AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET")
 AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE")
 ALGORITHMS = ["RS256"]
@@ -34,7 +34,7 @@ engine = create_engine(DATABASE_URL)
 
 class Item(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
-    owner_id: str
+    owner_id: str #owner_id is mapped from the token’s sub claim.
     data: str
 
 @app.on_event("startup")
@@ -88,6 +88,7 @@ def get_item(item_id: int, user_id: str):
     with Session(engine) as session:
         statement = select(Item).where(Item.id == item_id)
         item = session.exec(statement).first()
+        print("Owner ID:", item.owner_id)
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
         if item.owner_id != user_id and user_id != "m2m-app":
@@ -129,13 +130,16 @@ def list_all_items():
 
 @app.post("/add-item")
 def add_item(user: dict = Depends(get_current_user)):
+    print("sub:", user.get("sub"))
+    print("azp:", user.get("azp"), is_m2m_user(user))
     with Session(engine) as session:
-        new_item = Item(owner_id=user["sub"], data="Test data")
+        new_item = Item(owner_id=user["sub"], data="Test dummy data")
         session.add(new_item)
         session.commit()
         session.refresh(new_item)
         return new_item
 
+# m2m app token
 @app.get("/callback")
 def callback(code: str):
     token_url = f"https://{AUTH0_DOMAIN}/oauth/token"
@@ -159,7 +163,7 @@ def connect_third_party(user: dict = Depends(get_current_user)):
     third_party_data = {"data": "Synced successfully with third-party!"}
     return {"user": user, "third_party_data": third_party_data}
 
-# Secure CRUD API for User Items
+# Secure CRUD API for User Items items/{item_id} route that checks for ownership
 @app.get("/items/{item_id}")
 def read_item(item_id: int, user: dict = Depends(get_current_user)):
     return get_item(item_id, user_id=user["sub"])
@@ -167,5 +171,13 @@ def read_item(item_id: int, user: dict = Depends(get_current_user)):
 @app.get("/test")
 def test_endpoint():
     return {"message": "Test successful"}
+
+def is_m2m_user(user: dict) -> bool:
+    """
+    Check if the token is from an M2M app (via azp/client_id).
+    """
+    return user.get("azp") == AUTH0_CLIENT_ID
+
+
 
 # Secure M2M API for
