@@ -16,6 +16,7 @@ AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
 AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID") #m2m client id
 AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET")
 AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE")
+AUTH0_M2M_CLIENT_ID = os.getenv("AUTH0_M2M_CLIENT_ID")  # M2M client id
 ALGORITHMS = ["RS256"]
 
 # Auth0 OAuth2 Scheme
@@ -84,14 +85,16 @@ def get_current_user(token: str = Security(oauth2_scheme)):
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
 
 # Permissions function
-def get_item(item_id: int, user_id: str):
+def get_item(item_id: int, user: dict):
+    user_id = user["sub"]
     with Session(engine) as session:
         statement = select(Item).where(Item.id == item_id)
         item = session.exec(statement).first()
-        print("Owner ID:", item.owner_id)
+        print("Owner ID:", item.owner_id, is_m2m_user(user))
+
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
-        if item.owner_id != user_id and user_id != "m2m-app":
+        if item.owner_id != user_id and not is_m2m_user(user):
             raise HTTPException(status_code=403, detail="Access denied")
         return item
 
@@ -107,11 +110,16 @@ def home():
     </html>
     """
 
+@app.get("/analytics")
+def get_analytics(user: dict = Depends(get_current_user)):
+    if not is_m2m_user(user):
+        raise HTTPException(status_code=403, detail="Only M2M apps allowed")
+    return {"stats": "here's your analytics"}
+
 # Routes
 @app.get("/login")
 def login():
     return RedirectResponse(
-        # url=f"https://{AUTH0_DOMAIN}/authorize?response_type=code&client_id={AUTH0_CLIENT_ID}&redirect_uri=http://127.0.0.1:8000/callback&scope=openid profile email"
         url=f"https://{AUTH0_DOMAIN}/authorize?response_type=code&client_id={AUTH0_CLIENT_ID}&redirect_uri=http://127.0.0.1:8000/callback&scope=openid profile email&audience={AUTH0_AUDIENCE}"
 
     )
@@ -166,7 +174,7 @@ def connect_third_party(user: dict = Depends(get_current_user)):
 # Secure CRUD API for User Items items/{item_id} route that checks for ownership
 @app.get("/items/{item_id}")
 def read_item(item_id: int, user: dict = Depends(get_current_user)):
-    return get_item(item_id, user_id=user["sub"])
+    return get_item(item_id, user)
 
 @app.get("/test")
 def test_endpoint():
@@ -176,7 +184,7 @@ def is_m2m_user(user: dict) -> bool:
     """
     Check if the token is from an M2M app (via azp/client_id).
     """
-    return user.get("azp") == AUTH0_CLIENT_ID
+    return user.get("azp") == AUTH0_M2M_CLIENT_ID
 
 
 
